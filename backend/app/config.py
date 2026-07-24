@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     debug: bool = True
     host: str = "0.0.0.0"
     port: int = 8000
-    cors_origins: str = "http://localhost:5173,http://localhost:3000"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000"
     data_dir: Path = Path("./data")
     upload_dir: Path = Path("./data/uploads")
     specs_dir: Path = Path("./data/specs")
