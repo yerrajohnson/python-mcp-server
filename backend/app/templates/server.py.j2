@@ -1,0 +1,68 @@
+#!/usr/bin/env python3
+"""{{ server_name }} — Auto-generated MCP Server from OpenAPI.
+
+Tools: {{ tool_count }}
+Auth: {{ auth_types | join(', ') }}
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+from mcp.server.fastmcp import FastMCP
+
+from auth import AuthConfig, apply_auth
+from http_client import HttpClient
+
+mcp = FastMCP("{{ server_name }}")
+_client = HttpClient()
+_auth = AuthConfig.from_env()
+
+
+{% for tool in tools %}
+@mcp.tool(name="{{ tool.name }}")
+async def {{ tool.name }}(
+{% for prop_name, prop in tool.input_schema.get('properties', {}).items() %}
+    {{ prop_name }}: {{ 'dict[str, Any] | None' if prop.get('type') == 'object' else ('list[Any] | None' if prop.get('type') == 'array' else ('float | None' if prop.get('type') == 'number' else ('int | None' if prop.get('type') == 'integer' else ('bool | None' if prop.get('type') == 'boolean' else 'str | None')))) }} = None,
+{% endfor %}
+) -> str:
+    """{{ tool.description | replace('"', "'") | truncate(500) }}
+
+    HTTP {{ tool.method }} {{ tool.path }}
+    """
+    params: dict[str, Any] = {}
+    headers: dict[str, str] = {}
+    body: Any = None
+    path = "{{ tool.path }}"
+
+{% for prop_name, prop in tool.input_schema.get('properties', {}).items() %}
+    if {{ prop_name }} is not None:
+{% if prop.get('x-in') == 'path' %}
+        path = path.replace("{{ '{' }}{{ prop_name }}{{ '}' }}", str({{ prop_name }}))
+{% elif prop.get('x-in') == 'header' %}
+        headers["{{ prop_name }}"] = str({{ prop_name }})
+{% elif prop_name == 'body' %}
+        body = {{ prop_name }}
+{% else %}
+        params["{{ prop_name }}"] = {{ prop_name }}
+{% endif %}
+{% endfor %}
+
+    headers = apply_auth(headers, _auth)
+    base_url = "{{ tool.base_url }}" or _auth.base_url
+    url = f"{base_url.rstrip('/')}{path}"
+    result = await _client.request(
+        method="{{ tool.method }}",
+        url=url,
+        params=params or None,
+        headers=headers,
+        json_body=body,
+    )
+    return json.dumps(result, indent=2, default=str)
+
+{% endfor %}
+
+
+if __name__ == "__main__":
+    mcp.run()

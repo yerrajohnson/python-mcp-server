@@ -1,0 +1,67 @@
+# {{ server_name }}
+
+Auto-generated MCP server from OpenAPI specification(s).
+
+## Overview
+
+- **Tools:** {{ tool_count }}
+- **Authentication:** {{ auth_types | join(', ') }}
+
+## Setup
+
+```bash
+python -m venv .venv
+# Windows
+.venv\Scripts\activate
+# macOS/Linux
+source .venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `API_BASE_URL` | Base URL for the API |
+| `API_BEARER_TOKEN` | Bearer / JWT token |
+| `API_KEY` | API key value |
+| `API_KEY_HEADER` | API key header name (default `X-API-Key`) |
+| `API_USERNAME` / `API_PASSWORD` | Basic auth credentials |
+| `OAUTH_ACCESS_TOKEN` | OAuth2 access token |
+
+## Run
+
+```bash
+python server.py
+```
+
+## Tools
+
+{% for tool in tools %}
+### `{{ tool.name }}`
+
+{{ tool.description }}
+
+- **Method:** `{{ tool.method }}`
+- **Path:** `{{ tool.path }}`
+
+{% endfor %}
+
+## Cursor MCP Config
+
+```json
+{
+  "mcpServers": {
+    "{{ server_slug }}": {
+      "command": "python",
+      "args": ["server.py"],
+      "cwd": ".",
+      "env": {
+        "API_BASE_URL": "https://api.example.com",
+        "API_BEARER_TOKEN": "your-token"
+      }
+    }
+  }
+}
+```

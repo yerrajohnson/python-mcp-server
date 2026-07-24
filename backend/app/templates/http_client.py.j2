@@ -1,0 +1,41 @@
+"""Async HTTP client used by generated MCP tools."""
+
+from __future__ import annotations
+
+from typing import Any
+
+import httpx
+
+
+class HttpClient:
+    def __init__(self, timeout: float = 60.0) -> None:
+        self.timeout = timeout
+
+    async def request(
+        self,
+        method: str,
+        url: str,
+        params: dict[str, Any] | None = None,
+        headers: dict[str, str] | None = None,
+        json_body: Any = None,
+    ) -> Any:
+        async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
+            response = await client.request(
+                method=method.upper(),
+                url=url,
+                params=params,
+                headers=headers,
+                json=json_body,
+            )
+            try:
+                data = response.json()
+            except Exception:
+                data = {"text": response.text}
+
+            if response.status_code >= 400:
+                return {
+                    "error": True,
+                    "status_code": response.status_code,
+                    "body": data,
+                }
+            return data

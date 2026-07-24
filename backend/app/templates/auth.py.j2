@@ -1,0 +1,53 @@
+"""Authentication helpers for the generated MCP server."""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+
+@dataclass
+class AuthConfig:
+    base_url: str = ""
+    bearer_token: str | None = None
+    api_key: str | None = None
+    api_key_header: str = "X-API-Key"
+    api_key_location: str = "header"  # header | query
+    basic_username: str | None = None
+    basic_password: str | None = None
+    oauth_token: str | None = None
+
+    @classmethod
+    def from_env(cls) -> "AuthConfig":
+        return cls(
+            base_url=os.getenv("API_BASE_URL", ""),
+            bearer_token=os.getenv("API_BEARER_TOKEN") or os.getenv("API_TOKEN"),
+            api_key=os.getenv("API_KEY"),
+            api_key_header=os.getenv("API_KEY_HEADER", "X-API-Key"),
+            api_key_location=os.getenv("API_KEY_LOCATION", "header"),
+            basic_username=os.getenv("API_USERNAME"),
+            basic_password=os.getenv("API_PASSWORD"),
+            oauth_token=os.getenv("OAUTH_ACCESS_TOKEN"),
+        )
+
+
+def apply_auth(headers: dict[str, str], auth: AuthConfig) -> dict[str, str]:
+    """Attach detected auth credentials to outbound request headers."""
+    out = dict(headers)
+{% if 'bearer' in auth_types or 'oauth2' in auth_types %}
+    token = auth.oauth_token or auth.bearer_token
+    if token:
+        out.setdefault("Authorization", f"Bearer {token}")
+{% endif %}
+{% if 'apiKey' in auth_types %}
+    if auth.api_key and auth.api_key_location == "header":
+        out.setdefault(auth.api_key_header, auth.api_key)
+{% endif %}
+{% if 'basic' in auth_types %}
+    if auth.basic_username and auth.basic_password:
+        import base64
+
+        raw = f"{auth.basic_username}:{auth.basic_password}".encode()
+        out.setdefault("Authorization", f"Basic {base64.b64encode(raw).decode()}")
+{% endif %}
+    return out

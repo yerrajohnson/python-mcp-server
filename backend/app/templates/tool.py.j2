@@ -1,0 +1,18 @@
+"""Tool: {{ tool.name }}
+
+{{ tool.description }}
+
+Method: {{ tool.method }}
+URL: {{ tool.url }}
+"""
+
+TOOL_META = {
+    "name": "{{ tool.name }}",
+    "description": {{ tool.description | tojson }},
+    "method": "{{ tool.method }}",
+    "path": "{{ tool.path }}",
+    "url": "{{ tool.url }}",
+    "tags": {{ tool.tags | tojson }},
+    "input_schema": {{ tool.input_schema | tojson }},
+    "output_schema": {{ tool.output_schema | tojson }},
+}
