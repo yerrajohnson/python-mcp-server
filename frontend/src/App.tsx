@@ -1,30 +1,21 @@
-import DarkModeIcon from '@mui/icons-material/DarkMode';
-import LightModeIcon from '@mui/icons-material/LightMode';
 import HubIcon from '@mui/icons-material/Hub';
 import {
   AppBar,
   Box,
   Container,
-  CssBaseline,
   IconButton,
   Tab,
   Tabs,
-  ThemeProvider,
   Toolbar,
   Typography,
 } from '@mui/material';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import DarkModeIcon from '@mui/icons-material/DarkMode';
+import LightModeIcon from '@mui/icons-material/LightMode';
+import { StrictMode, useState } from 'react';
+import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import { McpServersPage } from './pages/McpServersPage';
-import { SpecsPage } from './pages/SpecsPage';
-import { darkTheme, lightTheme } from './theme';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: { refetchOnWindowFocus: false, retry: 1 },
-  },
-});
+import './index.css';
+import { AppProviders, McpServersPage, SpecsPage } from './frontend_core';
 
 function AppShell({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () => void }) {
   const location = useLocation();
@@ -62,16 +53,21 @@ function AppShell({ dark, onToggleTheme }: { dark: boolean; onToggleTheme: () =>
 
 export default function App() {
   const [dark, setDark] = useState(false);
-  const theme = useMemo(() => (dark ? darkTheme : lightTheme), [dark]);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <BrowserRouter>
-          <AppShell dark={dark} onToggleTheme={() => setDark((d) => !d)} />
-        </BrowserRouter>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <AppProviders dark={dark}>
+      <BrowserRouter>
+        <AppShell dark={dark} onToggleTheme={() => setDark((d) => !d)} />
+      </BrowserRouter>
+    </AppProviders>
+  );
+}
+
+const rootElement = document.getElementById('root');
+if (rootElement) {
+  createRoot(rootElement).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
   );
 }
