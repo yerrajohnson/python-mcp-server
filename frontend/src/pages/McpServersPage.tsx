@@ -1,96 +1,211 @@
-import { Box, Grid, Typography } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import DownloadIcon from '@mui/icons-material/Download';
+import PlayArrowIcon from '@mui/icons-material/PlayArrow';
+import StopIcon from '@mui/icons-material/Stop';
+import {
+  Box,
+  Button,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
 import { useMemo, useState } from 'react';
-import { useQueries } from '@tanstack/react-query';
-import { specsApi } from '../api/client';
-import { EndpointPanel } from '../components/mcp/EndpointPanel';
-import { GenerationSummary } from '../components/mcp/GenerationSummary';
-import { SpecSelector } from '../components/mcp/SpecSelector';
-import { useSpecifications } from '../hooks/useSpecs';
+import { mcpServersApi } from '../api/client';
+import {
+  EmptyDetailPanel,
+  ServerDetailPanel,
+  SpecDetailPanel,
+  ToolDetailPanel,
+} from '../components/mcp/DetailPanels';
+import { GenerateWizard } from '../components/mcp/GenerateWizard';
+import { McpTreeNav } from '../components/mcp/McpTreeNav';
+import { useMcpServerActions, useMcpTree } from '../hooks/useSpecs';
+import type { TreeSelection, TreeServerNode, TreeSpecNode } from '../types';
+
+/** Lightweight selection keys — always resolve live objects from tree data. */
+type SelectionRef =
+  | { type: 'spec'; specId: string }
+  | { type: 'server'; specId: string; serverId: string }
+  | { type: 'tool'; specId: string; serverId: string; toolId: string };
+
+function toSelectionRef(sel: TreeSelection): SelectionRef {
+  if (sel.type === 'spec') return { type: 'spec', specId: sel.spec.id };
+  if (sel.type === 'server') {
+    return { type: 'server', specId: sel.spec.id, serverId: sel.server.id };
+  }
+  return {
+    type: 'tool',
+    specId: sel.spec.id,
+    serverId: sel.server.id,
+    toolId: sel.tool.id,
+  };
+}
+
+function resolveSelection(
+  specs: TreeSpecNode[],
+  ref: SelectionRef | null,
+): TreeSelection | null {
+  if (!ref) return null;
+  const spec = specs.find((s) => s.id === ref.specId);
+  if (!spec) return null;
+  if (ref.type === 'spec') return { type: 'spec', spec };
+
+  const server = spec.servers.find((s) => s.id === ref.serverId);
+  if (!server) return null;
+  if (ref.type === 'server') return { type: 'server', spec, server };
+
+  const tool = server.tools.find((t) => t.id === ref.toolId);
+  if (!tool) return null;
+  return { type: 'tool', spec, server, tool };
+}
 
 export function McpServersPage() {
-  const { data: specs = [] } = useSpecifications();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [endpoints, setEndpoints] = useState<Record<string, Set<string>>>({});
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [selectionRef, setSelectionRef] = useState<SelectionRef | null>(null);
+  const { data, isLoading, error } = useMcpTree();
+  const actions = useMcpServerActions();
 
-  const selectedIds = Array.from(selected);
+  const specs = data?.specifications ?? [];
 
-  const detailQueries = useQueries({
-    queries: selectedIds.map((id) => ({
-      queryKey: ['specification', id],
-      queryFn: () => specsApi.get(id),
-    })),
-  });
+  // Single source of truth: always derive UI selection from latest tree data
+  const selection = useMemo(
+    () => resolveSelection(specs, selectionRef),
+    [specs, selectionRef],
+  );
 
-  const authLabels = useMemo(() => {
-    const labels = new Set<string>();
-    detailQueries.forEach((q) => {
-      q.data?.parsed?.auth_schemes.forEach((a) => labels.add(a.type));
-    });
-    return Array.from(labels);
-  }, [detailQueries]);
-
-  const toggleSpec = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-        setEndpoints((e) => {
-          const copy = { ...e };
-          delete copy[id];
-          return copy;
-        });
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+  const handleSelect = (sel: TreeSelection) => {
+    setSelectionRef(toSelectionRef(sel));
   };
 
-  const toggleEndpoint = (specId: string, key: string) => {
-    setEndpoints((prev) => {
-      const set = new Set(prev[specId] ?? []);
-      if (set.has(key)) set.delete(key);
-      else set.add(key);
-      return { ...prev, [specId]: set };
+  const handleDeleteServer = (server: TreeServerNode) => {
+    const toolLabel = server.tool_count === 1 ? '1 tool' : `${server.tool_count} tools`;
+    if (
+      !confirm(
+        `Delete "${server.name}" and its ${toolLabel}? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    actions.remove.mutate(server.id, {
+      onSuccess: () => {
+        if (
+          selectionRef &&
+          (selectionRef.type === 'server' || selectionRef.type === 'tool') &&
+          selectionRef.serverId === server.id
+        ) {
+          setSelectionRef(null);
+        }
+      },
     });
   };
 
-  const selectAll = (specId: string, keys: string[], select: boolean) => {
-    setEndpoints((prev) => ({
-      ...prev,
-      [specId]: select ? new Set(keys) : new Set(),
-    }));
-  };
+  const serverBusy =
+    selection?.type === 'server' &&
+    ((actions.start.isPending && actions.start.variables === selection.server.id) ||
+      (actions.stop.isPending && actions.stop.variables === selection.server.id) ||
+      (actions.remove.isPending && actions.remove.variables === selection.server.id));
 
   return (
     <Box>
-      <Typography variant="h5" gutterBottom>
-        MCP Servers
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 3 }}>
-        Select specifications and endpoints, then generate a downloadable MCP server.
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+        <Box>
+          <Typography variant="h5" gutterBottom>
+            MCP Servers
+          </Typography>
+          <Typography color="text.secondary">
+            Explore specifications, servers, and tools in a hierarchical tree.
+          </Typography>
+        </Box>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setWizardOpen(true)}>
+          Generate MCP Server
+        </Button>
+      </Box>
 
-      <Grid container spacing={2} sx={{ minHeight: 560 }}>
-        <Grid size={{ xs: 12, md: 3 }}>
-          <SpecSelector specs={specs} selected={selected} onToggle={toggleSpec} />
-        </Grid>
-        <Grid size={{ xs: 12, md: 5 }}>
-          <EndpointPanel
-            selectedSpecIds={selectedIds}
-            selectedEndpoints={endpoints}
-            onToggleEndpoint={toggleEndpoint}
-            onSelectAll={selectAll}
+      {error && (
+        <Typography color="error" sx={{ mb: 2 }}>
+          {(error as Error).message}
+        </Typography>
+      )}
+
+      <Paper
+        variant="outlined"
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '340px 1fr' },
+          minHeight: 560,
+          overflow: 'hidden',
+        }}
+      >
+        <Box sx={{ borderRight: { md: 1 }, borderColor: 'divider', bgcolor: 'background.paper' }}>
+          <McpTreeNav
+            specifications={specs}
+            loading={isLoading}
+            selection={selection}
+            onSelect={handleSelect}
           />
-        </Grid>
-        <Grid size={{ xs: 12, md: 4 }}>
-          <GenerationSummary
-            selectedSpecIds={selectedIds}
-            selectedEndpoints={endpoints}
-            authLabels={authLabels}
-          />
-        </Grid>
-      </Grid>
+        </Box>
+
+        <Box sx={{ p: 3, overflow: 'auto', maxHeight: 'calc(100vh - 220px)' }}>
+          {selection?.type === 'server' && (
+            <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+              {selection.server.status === 'running' ? (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="warning"
+                  startIcon={<StopIcon />}
+                  disabled={serverBusy}
+                  onClick={() => actions.stop.mutate(selection.server.id)}
+                >
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  color="success"
+                  startIcon={<PlayArrowIcon />}
+                  disabled={serverBusy}
+                  onClick={() => actions.start.mutate(selection.server.id)}
+                >
+                  Start
+                </Button>
+              )}
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={<DownloadIcon />}
+                disabled={serverBusy}
+                onClick={() => window.open(mcpServersApi.downloadUrl(selection.server.id), '_blank')}
+              >
+                Download
+              </Button>
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                startIcon={<DeleteIcon />}
+                disabled={serverBusy}
+                onClick={() => handleDeleteServer(selection.server)}
+              >
+                Delete
+              </Button>
+            </Stack>
+          )}
+
+          {!selection && <EmptyDetailPanel />}
+          {selection?.type === 'spec' && <SpecDetailPanel spec={selection.spec} />}
+          {selection?.type === 'server' && (
+            <ServerDetailPanel spec={selection.spec} server={selection.server} />
+          )}
+          {selection?.type === 'tool' && (
+            <ToolDetailPanel server={selection.server} tool={selection.tool} />
+          )}
+        </Box>
+      </Paper>
+
+      <GenerateWizard open={wizardOpen} onClose={() => setWizardOpen(false)} />
     </Box>
   );
 }

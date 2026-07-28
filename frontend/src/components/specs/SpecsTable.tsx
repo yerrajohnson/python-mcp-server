@@ -132,7 +132,12 @@ export function SpecsTable({ onView }: Props) {
                       size="small"
                       color="error"
                       onClick={() => {
-                        if (confirm(`Delete "${spec.name}"?`)) del.mutate(spec.id);
+                        if (
+                          confirm(
+                            `Delete "${spec.name}"? This will also remove all MCP servers generated from this spec.`,
+                          )
+                        )
+                          del.mutate(spec.id);
                       }}
                       disabled={busy}
                     >

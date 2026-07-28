@@ -10,6 +10,7 @@ from app.config import get_settings
 from app.core.exceptions import AppError, SpecValidationError
 from app.core.logging import get_logger
 from app.models.schemas import FileType, Specification, SpecificationSummary
+from app.services.mcp_registry import get_registry
 from app.services.storage import get_store
 
 router = APIRouter(tags=["specifications"])
@@ -74,8 +75,24 @@ async def get_specification(spec_id: str) -> Specification:
 
 @router.delete("/spec/{spec_id}")
 async def delete_specification(spec_id: str) -> dict:
-    await get_store().delete_spec(spec_id)
-    return {"ok": True, "id": spec_id}
+    store = get_store()
+    registry = get_registry()
+    server_ids = [
+        s["id"]
+        for s in await store.list_mcp_servers()
+        if s.get("spec_id") == spec_id
+    ]
+    for server_id in server_ids:
+        await registry.unregister(server_id)
+    deleted_servers = await store.delete_mcp_servers_for_spec(spec_id)
+    await store.delete_batches_for_spec(spec_id)
+    await store.delete_spec(spec_id)
+    logger.info(
+        "Deleted spec %s and %d related MCP server(s)",
+        spec_id,
+        len(deleted_servers),
+    )
+    return {"ok": True, "id": spec_id, "deleted_servers": deleted_servers}
 
 
 @router.get("/spec/{spec_id}/raw")

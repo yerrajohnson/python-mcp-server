@@ -202,6 +202,163 @@ class SpecStore:
         if path.exists():
             shutil.rmtree(path)
 
+    def _remove_output_folder(self, raw: dict[str, Any]) -> None:
+        gen_id = raw.get("generation_id")
+        if gen_id:
+            self.remove_generation_dir(gen_id)
+            return
+        output = raw.get("output_folder")
+        if not output:
+            return
+        path = Path(output)
+        if not path.is_absolute():
+            path = (self.settings.data_dir.parent / output).resolve()
+        if path.exists() and path.is_dir():
+            shutil.rmtree(path)
+
+    # --- MCP Server registry ---
+
+    @property
+    def _mcp_index_path(self) -> Path:
+        return self.settings.generated_dir / "mcp_servers.json"
+
+    @property
+    def _batches_path(self) -> Path:
+        return self.settings.generated_dir / "batches.json"
+
+    async def _read_mcp_servers(self) -> dict[str, Any]:
+        if not self._mcp_index_path.exists():
+            return {}
+        async with aiofiles.open(self._mcp_index_path, "r", encoding="utf-8") as f:
+            content = await f.read()
+            return json.loads(content) if content.strip() else {}
+
+    async def _write_mcp_servers(self, data: dict[str, Any]) -> None:
+        self._mcp_index_path.parent.mkdir(parents=True, exist_ok=True)
+        async with aiofiles.open(self._mcp_index_path, "w", encoding="utf-8") as f:
+            await f.write(json.dumps(data, indent=2, default=str))
+
+    async def list_mcp_servers(self) -> list[dict[str, Any]]:
+        data = await self._read_mcp_servers()
+        servers = list(data.values())
+        servers.sort(key=lambda s: s.get("created_date", ""), reverse=True)
+        return servers
+
+    async def get_mcp_server(self, server_id: str) -> dict[str, Any]:
+        data = await self._read_mcp_servers()
+        if server_id not in data:
+            raise SpecNotFoundError(server_id)
+        return data[server_id]
+
+    async def save_mcp_server(self, server: dict[str, Any]) -> dict[str, Any]:
+        data = await self._read_mcp_servers()
+        data[server["id"]] = server
+        await self._write_mcp_servers(data)
+        return server
+
+    async def delete_mcp_server(self, server_id: str) -> dict[str, Any]:
+        data = await self._read_mcp_servers()
+        if server_id not in data:
+            raise SpecNotFoundError(server_id)
+        raw = data.pop(server_id)
+        await self._write_mcp_servers(data)
+        tool_count = len(raw.get("tools") or [])
+        self._remove_output_folder(raw)
+        await self._remove_server_from_batches(server_id, raw.get("generation_id"))
+        logger.info(
+            "Deleted MCP server %s (%s) with %d tool(s)",
+            server_id,
+            raw.get("name"),
+            tool_count,
+        )
+        return {
+            "id": server_id,
+            "name": raw.get("name"),
+            "tool_count": tool_count,
+        }
+
+    async def _remove_server_from_batches(
+        self,
+        server_id: str,
+        generation_id: str | None,
+    ) -> None:
+        if not self._batches_path.exists():
+            return
+        async with aiofiles.open(self._batches_path, "r", encoding="utf-8") as f:
+            content = await f.read()
+            batches = json.loads(content) if content.strip() else {}
+        changed = False
+        for batch in batches.values():
+            servers = batch.get("servers") or []
+            filtered = [
+                s
+                for s in servers
+                if s.get("id") != server_id
+                and s.get("temp_id") != server_id
+                and (not generation_id or s.get("generation_id") != generation_id)
+            ]
+            if len(filtered) != len(servers):
+                batch["servers"] = filtered
+                changed = True
+        if changed:
+            async with aiofiles.open(self._batches_path, "w", encoding="utf-8") as f:
+                await f.write(json.dumps(batches, indent=2, default=str))
+
+    async def delete_mcp_servers_for_spec(self, spec_id: str) -> list[str]:
+        """Delete all MCP servers generated from a specification."""
+        data = await self._read_mcp_servers()
+        deleted: list[str] = []
+        for server_id in list(data.keys()):
+            if data[server_id].get("spec_id") != spec_id:
+                continue
+            raw = data.pop(server_id)
+            self._remove_output_folder(raw)
+            deleted.append(server_id)
+        if deleted:
+            await self._write_mcp_servers(data)
+            logger.info("Deleted %d MCP server(s) for spec %s", len(deleted), spec_id)
+        return deleted
+
+    async def delete_batches_for_spec(self, spec_id: str) -> None:
+        if not self._batches_path.exists():
+            return
+        async with aiofiles.open(self._batches_path, "r", encoding="utf-8") as f:
+            content = await f.read()
+            batches = json.loads(content) if content.strip() else {}
+        removed = [batch_id for batch_id, batch in batches.items() if batch.get("spec_id") == spec_id]
+        if not removed:
+            return
+        for batch_id in removed:
+            batches.pop(batch_id)
+        async with aiofiles.open(self._batches_path, "w", encoding="utf-8") as f:
+            await f.write(json.dumps(batches, indent=2, default=str))
+        logger.info("Removed %d wizard batch(es) for spec %s", len(removed), spec_id)
+
+    async def used_mcp_ports(self) -> set[int]:
+        data = await self._read_mcp_servers()
+        return {int(s["port"]) for s in data.values() if s.get("port")}
+
+    async def save_batch(self, batch_id: str, payload: dict[str, Any]) -> None:
+        if not self._batches_path.exists():
+            batches: dict[str, Any] = {}
+        else:
+            async with aiofiles.open(self._batches_path, "r", encoding="utf-8") as f:
+                content = await f.read()
+                batches = json.loads(content) if content.strip() else {}
+        batches[batch_id] = payload
+        async with aiofiles.open(self._batches_path, "w", encoding="utf-8") as f:
+            await f.write(json.dumps(batches, indent=2, default=str))
+
+    async def get_batch(self, batch_id: str) -> dict[str, Any]:
+        if not self._batches_path.exists():
+            raise SpecNotFoundError(batch_id)
+        async with aiofiles.open(self._batches_path, "r", encoding="utf-8") as f:
+            content = await f.read()
+            batches = json.loads(content) if content.strip() else {}
+        if batch_id not in batches:
+            raise SpecNotFoundError(batch_id)
+        return batches[batch_id]
+
 
 _store: SpecStore | None = None
 

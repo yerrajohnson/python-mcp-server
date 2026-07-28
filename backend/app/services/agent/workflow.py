@@ -177,19 +177,25 @@ class MCPGenerationAgent:
                 tool_name = _intelligent_tool_name(ep, used_names)
                 state.tools.append(
                     {
+                        "id": f"{tool_name}-{ep.method}-{ep.path}".replace("/", "_").replace("{", "").replace("}", ""),
                         "name": tool_name,
                         "description": ep.description or ep.summary or f"{ep.method} {ep.path}",
                         "method": ep.method,
                         "path": ep.path,
                         "url": f"{base_url.rstrip('/')}{ep.path}" if base_url else ep.path,
                         "base_url": base_url,
+                        "operation_id": ep.operation_id,
+                        "summary": ep.summary,
                         "tags": ep.tags,
+                        "parameters": [p.model_dump(by_alias=True) for p in ep.parameters],
+                        "request_body": ep.request_body,
+                        "responses": ep.responses,
                         "input_schema": ep.input_schema or {"type": "object", "properties": {}},
                         "output_schema": ep.output_schema or {"type": "object"},
                         "security": ep.security,
                         "spec_id": spec.id,
                         "spec_name": spec.name,
-                        "auth_schemes": [a.model_dump() for a in spec.parsed.auth_schemes],
+                        "auth_schemes": [a.model_dump(mode="json") for a in spec.parsed.auth_schemes],
                     }
                 )
         self._log(state, f"Created {len(state.tools)} tool definition(s)", 65, cb)

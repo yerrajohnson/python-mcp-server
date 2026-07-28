@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import generate, parse, specs
+from app.api.routes import generate, mcp_servers, parse, specs
 from app.config import get_settings
 from app.models.schemas import HealthResponse
 
@@ -8,6 +8,7 @@ api_router = APIRouter()
 api_router.include_router(specs.router)
 api_router.include_router(parse.router)
 api_router.include_router(generate.router)
+api_router.include_router(mcp_servers.router)
 
 
 @api_router.get("/health", response_model=HealthResponse, tags=["health"])

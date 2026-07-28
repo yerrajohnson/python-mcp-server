@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     generated_dir: Path = Path("./data/generated")
     max_upload_size_mb: int = 10
     log_level: str = "INFO"
+    # Public URL used in UI for MCP endpoints (same FastAPI host/port)
+    public_base_url: str = "http://127.0.0.1:8000"
 
     @property
     def cors_origin_list(self) -> list[str]:

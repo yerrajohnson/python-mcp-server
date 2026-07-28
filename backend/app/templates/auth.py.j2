@@ -31,20 +31,29 @@ class AuthConfig:
         )
 
 
-def apply_auth(headers: dict[str, str], auth: AuthConfig) -> dict[str, str]:
-    """Attach detected auth credentials to outbound request headers."""
+def apply_auth(
+    headers: dict[str, str],
+    auth: AuthConfig,
+    client_headers: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Attach auth credentials. Client/Postman headers take priority over env."""
     out = dict(headers)
+    for key, value in (client_headers or {}).items():
+        if value:
+            out.setdefault(key, value)
 {% if 'bearer' in auth_types or 'oauth2' in auth_types %}
     token = auth.oauth_token or auth.bearer_token
-    if token:
-        out.setdefault("Authorization", f"Bearer {token}")
+    if token and "Authorization" not in out:
+        out["Authorization"] = (
+            token if token.lower().startswith(("bearer ", "basic ")) else f"Bearer {token}"
+        )
 {% endif %}
 {% if 'apiKey' in auth_types %}
-    if auth.api_key and auth.api_key_location == "header":
+    if auth.api_key and auth.api_key_location == "header" and auth.api_key_header not in out:
         out.setdefault(auth.api_key_header, auth.api_key)
 {% endif %}
 {% if 'basic' in auth_types %}
-    if auth.basic_username and auth.basic_password:
+    if auth.basic_username and auth.basic_password and "Authorization" not in out:
         import base64
 
         raw = f"{auth.basic_username}:{auth.basic_password}".encode()

@@ -11,6 +11,8 @@ export type FileType = 'yaml' | 'yml' | 'json';
 
 export type AuthType = 'apiKey' | 'bearer' | 'oauth2' | 'basic' | 'none';
 
+export type McpServerStatus = 'stopped' | 'running' | 'error';
+
 export interface SpecificationSummary {
   id: string;
   name: string;
@@ -83,29 +85,126 @@ export interface ParseResponse {
   error_message?: string | null;
 }
 
-export interface GenerateRequest {
-  spec_ids: string[];
-  selected_endpoints: Record<string, string[]>;
-  server_name: string;
-  output_folder?: string | null;
+export interface LogicalGroupEndpoint {
+  key: string;
+  method: string;
+  path: string;
+  summary?: string | null;
+  tool_name?: string | null;
+  tags: string[];
 }
 
-export interface GenerateResponse {
-  generation_id: string;
-  server_name: string;
-  tool_count: number;
+export interface LogicalGroup {
+  id: string;
+  name: string;
+  description?: string | null;
+  endpoints: LogicalGroupEndpoint[];
+}
+
+export interface GeneratedServerPreview {
+  temp_id: string;
+  name: string;
+  description?: string | null;
+  server_url: string;
+  port: number;
   authentication: string[];
-  selected_endpoints: string[];
+  tool_count: number;
+  tools: Array<{
+    name: string;
+    description: string;
+    method: string;
+    path: string;
+  }>;
   output_folder: string;
-  status: string;
-  files: string[];
+  generation_id: string;
+}
+
+export interface WizardGenerateResponse {
+  batch_id: string;
+  servers: GeneratedServerPreview[];
   logs: string[];
 }
 
-export interface ApiError {
-  error: string;
-  details?: Record<string, unknown>;
+export interface McpServerRecord {
+  id: string;
+  name: string;
+  description?: string | null;
+  spec_id: string;
+  spec_name: string;
+  tool_count: number;
+  authentication: string[];
+  server_url: string;
+  port: number;
+  status: McpServerStatus;
+  created_date: string;
+  generation_id: string;
+  output_folder: string;
+  tools: Array<Record<string, unknown>>;
+  pid?: number | null;
+  logical_group?: string | null;
+  transport?: string;
+  version?: string;
 }
+
+export interface TreeToolNode {
+  id: string;
+  name: string;
+  description?: string | null;
+  method?: string | null;
+  path?: string | null;
+  operation_id?: string | null;
+  summary?: string | null;
+  tags: string[];
+  url?: string | null;
+  base_url?: string | null;
+  parameters: Array<Record<string, unknown>>;
+  request_body?: Record<string, unknown> | null;
+  responses: Record<string, unknown>;
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  security: Array<Record<string, unknown>>;
+  auth_schemes: Array<Record<string, unknown>>;
+}
+
+export interface TreeServerNode {
+  id: string;
+  name: string;
+  description?: string | null;
+  endpoint: string;
+  port: number;
+  status: McpServerStatus;
+  authentication: string[];
+  tool_count: number;
+  created_date: string;
+  transport: string;
+  version: string;
+  logical_group?: string | null;
+  tools: TreeToolNode[];
+}
+
+export interface TreeSpecNode {
+  id: string;
+  name: string;
+  version: string;
+  description?: string | null;
+  openapi_version?: string | null;
+  base_urls: string[];
+  auth_types: string[];
+  endpoint_count: number;
+  server_count: number;
+  tool_count: number;
+  upload_date?: string | null;
+  servers: TreeServerNode[];
+}
+
+export interface McpTreeResponse {
+  specifications: TreeSpecNode[];
+}
+
+export type TreeSelection =
+  | { type: 'spec'; spec: TreeSpecNode }
+  | { type: 'server'; spec: TreeSpecNode; server: TreeServerNode }
+  | { type: 'tool'; spec: TreeSpecNode; server: TreeServerNode; tool: TreeToolNode };
 
 export function endpointKey(ep: Pick<EndpointInfo, 'method' | 'path'>): string {
   return `${ep.method}:${ep.path}`;

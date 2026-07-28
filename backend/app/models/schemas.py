@@ -166,3 +166,158 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     app_name: str
+
+
+# --- Wizard / MCP Server registry models ---
+
+
+class McpServerStatus(str, Enum):
+    STOPPED = "stopped"
+    RUNNING = "running"
+    ERROR = "error"
+
+
+class LogicalGroupEndpoint(BaseModel):
+    key: str  # METHOD:path
+    method: str
+    path: str
+    summary: str | None = None
+    tool_name: str | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
+class LogicalGroup(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    endpoints: list[LogicalGroupEndpoint] = Field(default_factory=list)
+
+
+class GroupRequest(BaseModel):
+    spec_id: str
+    selected_endpoints: list[str] = Field(
+        ...,
+        description="List of endpoint keys (METHOD:path)",
+    )
+
+
+class GroupResponse(BaseModel):
+    spec_id: str
+    groups: list[LogicalGroup]
+
+
+class WizardGenerateRequest(BaseModel):
+    spec_id: str
+    groups: list[LogicalGroup]
+
+
+class GeneratedServerPreview(BaseModel):
+    temp_id: str
+    name: str
+    description: str | None = None
+    server_url: str
+    port: int = 0
+    authentication: list[str] = Field(default_factory=list)
+    tool_count: int
+    tools: list[dict[str, Any]] = Field(default_factory=list)
+    output_folder: str
+    generation_id: str
+    logical_group: str | None = None
+    spec_slug: str | None = None
+    server_slug: str | None = None
+
+
+class WizardGenerateResponse(BaseModel):
+    batch_id: str
+    servers: list[GeneratedServerPreview]
+    logs: list[str] = Field(default_factory=list)
+
+
+class WizardSaveRequest(BaseModel):
+    batch_id: str
+    servers: list[GeneratedServerPreview]
+
+
+class McpServerRecord(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    spec_id: str
+    spec_name: str
+    tool_count: int
+    authentication: list[str] = Field(default_factory=list)
+    server_url: str
+    port: int = 0
+    status: McpServerStatus = McpServerStatus.STOPPED
+    created_date: datetime
+    generation_id: str
+    output_folder: str
+    tools: list[dict[str, Any]] = Field(default_factory=list)
+    pid: int | None = None
+    logical_group: str | None = None
+    transport: str = "streamable-http"
+    version: str = "1.0.0"
+    spec_slug: str | None = None
+    server_slug: str | None = None
+
+
+class McpServerUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+
+
+class TreeToolNode(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    method: str | None = None
+    path: str | None = None
+    operation_id: str | None = None
+    summary: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    url: str | None = None
+    base_url: str | None = None
+    parameters: list[dict[str, Any]] = Field(default_factory=list)
+    request_body: dict[str, Any] | None = None
+    responses: dict[str, Any] = Field(default_factory=dict)
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    output_schema: dict[str, Any] = Field(default_factory=dict)
+    security: list[dict[str, Any]] = Field(default_factory=list)
+    auth_schemes: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class TreeServerNode(BaseModel):
+    id: str
+    name: str
+    description: str | None = None
+    endpoint: str
+    port: int = 0
+    status: McpServerStatus
+    authentication: list[str] = Field(default_factory=list)
+    tool_count: int
+    created_date: datetime
+    transport: str = "streamable-http"
+    version: str = "1.0.0"
+    logical_group: str | None = None
+    tools: list[TreeToolNode] = Field(default_factory=list)
+    spec_slug: str | None = None
+    server_slug: str | None = None
+
+
+class TreeSpecNode(BaseModel):
+    id: str
+    name: str
+    version: str
+    description: str | None = None
+    openapi_version: str | None = None
+    base_urls: list[str] = Field(default_factory=list)
+    auth_types: list[str] = Field(default_factory=list)
+    endpoint_count: int = 0
+    server_count: int = 0
+    tool_count: int = 0
+    upload_date: datetime | None = None
+    servers: list[TreeServerNode] = Field(default_factory=list)
+
+
+class McpTreeResponse(BaseModel):
+    specifications: list[TreeSpecNode] = Field(default_factory=list)

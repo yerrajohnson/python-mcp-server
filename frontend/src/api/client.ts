@@ -1,17 +1,19 @@
 import axios from 'axios';
 import type {
-  GenerateRequest,
-  GenerateResponse,
+  LogicalGroup,
+  McpServerRecord,
+  McpTreeResponse,
   ParseResponse,
   Specification,
   SpecificationSummary,
+  WizardGenerateResponse,
 } from '../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://localhost:8000';
 
 export const api = axios.create({
   baseURL: API_BASE,
-  timeout: 120_000,
+  timeout: 180_000,
 });
 
 api.interceptors.response.use(
@@ -42,14 +44,35 @@ export const specsApi = {
     (await api.post<ParseResponse>('/generate-metadata', { spec_id: specId })).data,
 };
 
-export const generateApi = {
-  generate: async (body: GenerateRequest) =>
-    (await api.post<GenerateResponse>('/generate', body)).data,
-  downloadUrl: (generationId: string) => `${API_BASE}/download/${generationId}`,
-  run: async (generationId: string) =>
-    (await api.post('/run', { generation_id: generationId })).data,
-  stop: async (generationId: string) =>
-    (await api.post(`/stop/${generationId}`)).data,
-  get: async (generationId: string) =>
-    (await api.get(`/generations/${generationId}`)).data,
+export const mcpServersApi = {
+  list: async () => (await api.get<McpServerRecord[]>('/mcp-servers')).data,
+  tree: async () => (await api.get<McpTreeResponse>('/mcp-servers/tree')).data,
+  get: async (id: string) => (await api.get<McpServerRecord>(`/mcp-servers/${id}`)).data,
+  update: async (id: string, body: { name?: string; description?: string }) =>
+    (await api.patch<McpServerRecord>(`/mcp-servers/${id}`, body)).data,
+  remove: async (id: string) => (await api.delete(`/mcp-servers/${id}`)).data,
+  group: async (specId: string, selectedEndpoints: string[]) =>
+    (
+      await api.post<{ spec_id: string; groups: LogicalGroup[] }>('/mcp-servers/group', {
+        spec_id: specId,
+        selected_endpoints: selectedEndpoints,
+      })
+    ).data,
+  wizardGenerate: async (specId: string, groups: LogicalGroup[]) =>
+    (
+      await api.post<WizardGenerateResponse>('/mcp-servers/wizard/generate', {
+        spec_id: specId,
+        groups,
+      })
+    ).data,
+  wizardSave: async (batchId: string, servers: WizardGenerateResponse['servers']) =>
+    (
+      await api.post<McpServerRecord[]>('/mcp-servers/wizard/save', {
+        batch_id: batchId,
+        servers,
+      })
+    ).data,
+  downloadUrl: (id: string) => `${API_BASE}/mcp-servers/${id}/download`,
+  start: async (id: string) => (await api.post<McpServerRecord>(`/mcp-servers/${id}/start`)).data,
+  stop: async (id: string) => (await api.post<McpServerRecord>(`/mcp-servers/${id}/stop`)).data,
 };

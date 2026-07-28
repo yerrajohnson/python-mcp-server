@@ -65,4 +65,15 @@ async def {{ tool.name }}(
 
 
 if __name__ == "__main__":
-    mcp.run()
+    import os
+
+    port = int(os.getenv("MCP_PORT") or os.getenv("FASTMCP_PORT") or "0")
+    host = os.getenv("FASTMCP_HOST", "127.0.0.1")
+    if port > 0:
+        # Expose MCP over HTTP/SSE for clients (Postman, Cursor remote, etc.)
+        try:
+            mcp.run(transport="sse", host=host, port=port)
+        except TypeError:
+            mcp.run()
+    else:
+        mcp.run()
